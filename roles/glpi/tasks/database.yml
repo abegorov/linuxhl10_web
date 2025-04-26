@@ -1,0 +1,69 @@
+---
+- name: Install python3-pymysql and acl
+  ansible.builtin.apt:
+    name:
+      - acl
+      - python3-pymysql
+    state: present
+
+- name: Touch glpicrypt.key
+  ansible.builtin.copy:
+    content: '1234567890ABCDEF1234567890ABCDEF'
+    dest: '{{ glpi_config_dir }}/glpicrypt.key'
+    force: false
+    owner: '{{ glpi_user }}'
+    group: '{{ glpi_group }}'
+    mode: '0660'
+
+- name: List databases
+  run_once: true
+  community.mysql.mysql_info:
+    login_host: '{{ glpi_db_host }}'
+    login_user: '{{ glpi_db_user }}'
+    login_password: '{{ glpi_db_password }}'
+    login_db: '{{ glpi_db_name }}'
+    ca_cert: '{{ glpi_db_certs.ca_path }}'
+    client_cert: '{{ glpi_db_certs.cert_path }}'
+    client_key: '{{ glpi_db_certs.key_path }}'
+    filter: databases
+    return_empty_dbs: false
+  register: glpi_databases_list
+
+- name: Initialize database if not exists
+  become: true
+  become_user: '{{ glpi_user }}'
+  run_once: true
+  ansible.builtin.shell: |
+    set -e
+    set -o pipefail
+    php bin/console -qn db:install -L {{ glpi_language |
+      ansible.builtin.quote }} > /dev/null
+    cat '{{ glpi_config_dir }}/glpicrypt.key' | base64
+  args:
+    chdir: '{{ glpi_dir }}'
+    executable: /bin/bash
+  changed_when: true
+  when: glpi_db_name not in glpi_databases_list.databases
+  register: glpi_crypt_key
+
+- name: Save GLPI crypt key file
+  become: false
+  delegate_to: localhost
+  run_once: true
+  ansible.builtin.copy:
+    content: '{{ glpi_crypt_key.stdout }}'
+    dest: '{{ glpi_db_crypt_file }}'
+    mode: '0600'
+  when: glpi_crypt_key.changed  # noqa: no-handler
+  no_log: '{{ not debug }}'
+
+- name: Update glpicrypt.key
+  ansible.builtin.copy:
+    content: '{{ lookup("ansible.builtin.file", glpi_db_crypt_file) |
+      ansible.builtin.b64decode }}'
+    dest: '{{ glpi_config_dir }}/glpicrypt.key'
+    owner: '{{ glpi_user }}'
+    group: '{{ glpi_group }}'
+    mode: '0660'
+  no_log: '{{ not debug }}'
+...

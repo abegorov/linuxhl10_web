@@ -1,0 +1,43 @@
+---
+keepalived_net: '192.168.56.'
+keepalived_iface: eth1
+keepalived_config: |
+  global_defs {
+    vrrp_version 3
+    vrrp_strict
+    max_auto_priority
+    vrrp_priority -20
+    checker_priority -20
+    bfd_priority -20
+    vrrp_no_swap
+    checker_no_swap
+    bfd_no_swap
+    reload_check_config
+  }
+
+  vrrp_track_process ANGIE {
+    process angie
+  }
+
+  {% set i = groups['lb'].index(inventory_hostname) %}
+  {% set hosts = groups['lb'][i:] + groups['lb'][:i] %}
+  {% for host in hosts %}
+  {% set hostvar = hostvars[host] %}
+  vrrp_instance VRRP_{{ hostvar.keepalived_rid }} {
+    state {{ 'BACKUP' if loop.index > 1 else 'MASTER' }}
+    interface {{ keepalived_iface }}
+    priority {{ 100 + loop.revindex0 if loop.index > 1 else 255 }}
+    virtual_router_id {{ hostvar.keepalived_rid }}
+    advert_int 0.1
+    mcast_src_ip {{ ip_address }}
+    accept
+    preempt
+    virtual_ipaddress {
+      {{ keepalived_net }}{{ hostvar.keepalived_rid }}
+    }
+    track_process {
+      ANGIE
+    }
+  }
+  {% endfor %}
+...
