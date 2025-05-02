@@ -6,4 +6,12 @@ tls_certs_certs:
     key_path: '{{ web_key_path }}'
     not_after: '{{ web_cert_not_after }}'
     not_before: '{{ web_cert_not_before }}'
+
+tls_certs_subject_alt_name:
+  - 'DNS:{{ inventory_hostname_short }}'
+  - 'DNS:localhost'
+  - 'IP:{{ ip_address }}'
+  - 'IP:192.168.56.51'
+  - 'IP:192.168.56.52'
+  - 'IP:127.0.0.1'
 ...
